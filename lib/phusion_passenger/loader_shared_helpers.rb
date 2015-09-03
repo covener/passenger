@@ -305,6 +305,18 @@ module PhusionPassenger
       # Do nothing.
     end
 
+    # If `path` is an absolute path to a file that is located in the current
+    # working directory, then returns its basename. Otherwise, returns `path.
+    # The main use case for this method is to fix
+    # https://github.com/phusion/passenger/issues/1596
+    def maybe_make_path_relative_to_pwd(path)
+      if File.dirname(path) == Dir.pwd
+        File.basename(path)
+      else
+        path
+      end
+    end
+
     def create_socket_address(protocol, address)
       if protocol == 'unix'
         return "unix:#{address}"
