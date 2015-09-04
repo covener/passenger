@@ -24,6 +24,7 @@
 
 PhusionPassenger.require_passenger_lib 'constants'
 PhusionPassenger.require_passenger_lib 'public_api'
+PhusionPassenger.require_passenger_lib 'ruby_core_enhancements'
 PhusionPassenger.require_passenger_lib 'debug_logging'
 PhusionPassenger.require_passenger_lib 'utils/shellwords'
 
@@ -310,7 +311,7 @@ module PhusionPassenger
     # The main use case for this method is to fix
     # https://github.com/phusion/passenger/issues/1596
     def maybe_make_path_relative_to_pwd(path)
-      if File.dirname(path) == Dir.pwd
+      if File.dirname(path) == Dir.pwd_no_resolve
         File.basename(path)
       else
         path
