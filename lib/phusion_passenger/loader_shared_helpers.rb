@@ -22,6 +22,7 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #  THE SOFTWARE.
 
+require 'pathname'
 PhusionPassenger.require_passenger_lib 'constants'
 PhusionPassenger.require_passenger_lib 'public_api'
 PhusionPassenger.require_passenger_lib 'ruby_core_enhancements'
@@ -306,13 +307,28 @@ module PhusionPassenger
       # Do nothing.
     end
 
-    # If `path` is an absolute path to a file that is located in the current
-    # working directory, then returns its basename. Otherwise, returns `path.
-    # The main use case for this method is to fix
-    # https://github.com/phusion/passenger/issues/1596
-    def maybe_make_path_relative_to_pwd(path)
-      if File.dirname(path) == Dir.pwd_no_resolve
-        File.basename(path)
+    # If the current working directory equals `app_root`, and `path` is a
+    # file inside `app_root`, then returns its basename. Otherwise, returns
+    # `path`.
+    #
+    # The main use case for this method is to ensure that we load config.ru
+    # with a relative path (only its base name) in most circumstances,
+    # instead of with an absolute path. This is necessary in order to retain
+    # compatibility with apps that expect config.ru's __FILE__ to be relative.
+    # See https://github.com/phusion/passenger/issues/1596
+    def maybe_make_path_relative_to_app_root(app_root, path)
+      # We resolve all paths to their realpath so that we can perform equality
+      # checks on them. This is necessary because according to Linux
+      # path_resolution(7) rules, a chdir() resolves symlinks, causing the
+      # paths reported by the Passenger core to be different from the paths
+      # we obtain from getcwd() and other system calls.
+      resolved_pwd = Pathname.new(Dir.pwd).realpath.to_s
+      resolved_app_root = Pathname.new(app_root).realpath.to_s
+      resolved_path = Pathname.new(path).realpath.to_s
+
+      if resolved_pwd == resolved_app_root &&
+           File.dirname(resolved_path) == resolved_app_root
+        File.basename(resolved_path)
       else
         path
       end
