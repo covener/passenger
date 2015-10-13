@@ -90,9 +90,10 @@ function setupEnvironment(options) {
 	ustLog.init(PhusionPassenger.options.ust_router_address, PhusionPassenger.options.ust_router_username, 
 		PhusionPassenger.options.ust_router_password, PhusionPassenger.options.union_station_key, PhusionPassenger.options.app_group_name);
 	//global.ustLog = ustLog;
-	
-	logExpress.initPreLoad(options.app_root, ustLog);
-	logMongoDB.initPreLoad(options.app_root, ustLog);
+	if (ustLog.isEnabled()) {
+		logExpress.initPreLoad(options.app_root, ustLog);
+		logMongoDB.initPreLoad(options.app_root, ustLog);
+	}
 
 	stdinReader.close();
 	stdinReader = undefined;
@@ -101,8 +102,10 @@ function setupEnvironment(options) {
 
 	loadApplication();
 	
-	logExpress.initPostLoad();
-	logMongoDB.initPostLoad();
+	if (ustLog.isEnabled()) {
+		logExpress.initPostLoad();
+		logMongoDB.initPostLoad();
+	}
 }
 
 /**

@@ -65,10 +65,19 @@ exports.init = function(routerAddress, routerUser, routerPass, gatewayKey, group
 	if (ustRouterAddress.indexOf("unix:") == 0) {
 		ustRouterAddress = ustRouterAddress.substring(5);
 	}
-	console.log("initialized ustrouter_connector with [" + ustRouterAddress + "] [" + ustRouterUser + "] [" + ustRouterPass + "] [" + 
+	console.log("initialize ustrouter_connector with [" + ustRouterAddress + "] [" + ustRouterUser + "] [" + ustRouterPass + "] [" + 
 		ustGatewayKey + "] [" + appGroupName + "]");
 
+	if (!ustRouterAddress || !ustRouterUser || !ustRouterPass || !ustGatewayKey || !appGroupName) {
+		console.log("Union Station logging disabled (incomplete configuration).");
+		return;
+	}
+	
 	beginConnection();
+}
+
+exports.isEnabled = function() {
+	return routerState > 0;
 }
 
 function beginConnection() {
@@ -198,7 +207,7 @@ function onData(data) {
 
 	if (routerState == 2) { // expect version 1
 		if ("version" !== rcvString[0] || "1" !== rcvString[1]) {
-			console.error("Unsupported ustrouter version [" + rcvString + "], Union Station logging disabled.");
+			console.error("Unsupported ustrouter version: [" + rcvString + "], Union Station logging disabled.");
 			changeState(0);
 			// TODO: close?
 			return;
@@ -208,8 +217,8 @@ function onData(data) {
 		writeLenString(routerConn, ustRouterUser);
 		writeLenString(routerConn, ustRouterPass);
 	} else if (routerState == 3) { // expect OK from auth
-		if ("ok" != rcvString[0]) {
-			console.error("Error authenticating to ustrouter: [" + rcvString + "], Union Station logging disabled.");
+		if ("status" != rcvString[0] || "ok" != rcvString[1]) {
+			console.error("Error authenticating to ustrouter: unexpected [" + rcvString + "], Union Station logging disabled.");
 			changeState(0);
 			// TODO: close?
 			return;
@@ -218,8 +227,8 @@ function onData(data) {
 
 		writeLenArray(routerConn, "init\0" + nodeName + "\0");
 	} else if (routerState == 4) { // expect OK from init
-		if ("ok" != rcvString[0]) {
-			console.error("Error initializing ustrouter connection: [" + rcvString + "], Union Station logging disabled.");
+		if ("status" != rcvString[0] || "ok" != rcvString[1]) {
+			console.error("Error initializing ustrouter connection: unexpected [" + rcvString + "], Union Station logging disabled.");
 			changeState(0);
 			// TODO: close?
 			return;
@@ -231,8 +240,8 @@ function onData(data) {
 	 	console.log("unexpected data receive state (5)");
 	 	tryWriteLogs();
 	} else if (routerState == 6) { // expect OK transaction open
-		if ("ok" != rcvString[0]) {
-			console.error("Error opening ustrouter transaction: [" + rcvString + "], Union Station logging disabled.");
+		if ("status" != rcvString[0] || "ok" != rcvString[1]) {
+			console.error("Error opening ustrouter transaction: unexpected [" + rcvString + "], Union Station logging disabled.");
 			changeState(0);
 			// TODO: close?
 			return;
@@ -240,15 +249,15 @@ function onData(data) {
 		
 		pendingTxnBuf[0].state = 2;
 		if (pendingTxnBuf[0].txnId.length == 0) {
-			if (inspection) console.log("use rcvd back txnId: " + rcvString[1]);
-			pendingTxnBuf[0].txnId = rcvString[1]; // fill in the txn from the ustrouter reply
+			if (inspection) console.log("use rcvd back txnId: " + rcvString[2]);
+			pendingTxnBuf[0].txnId = rcvString[2]; // fill in the txn from the ustrouter reply
 		}
 
 		changeState(5);
 		tryWriteLogs();
 	} else if (routerState == 7) { // expect OK transaction close
-		if ("ok" != rcvString[0]) {
-			console.error("Error closing ustrouter transaction: [" + rcvString + "], Union Station logging disabled.");
+		if ("status" != rcvString[0] || "ok" != rcvString[1]) {
+			console.error("Error closing ustrouter transaction: unexpected [" + rcvString + "], Union Station logging disabled.");
 			changeState(0);
 			// TODO: close?
 			return;
