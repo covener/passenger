@@ -25,11 +25,12 @@
 
 var log;
 var express;
-var routerThis;
 var ustLog;
 
 var createNamespace = require('continuation-local-storage').createNamespace;
 var clStore = createNamespace('passenger-request-ctx');
+
+var applicationThis;
 
 exports.initPreLoad = function(logger, appRoot, ustLogger) {
 	log = logger;
@@ -53,21 +54,22 @@ exports.initPreLoad = function(logger, appRoot, ustLogger) {
 				var rval = express.application.initOrig.apply(this, arguments);
 
 				this.use(logRequest);
+				
+				applicationThis = this; // store for initPostLoad use
+				
 				return rval;
 			};
 
-		log.debug("Express tap: router.use, to be as late as possible in the use() line, but before any other error handlers..");
-		express.Router.useOrig = express.Router.use;
-		express.Router.use = function() {
+		log.debug("Express tap: application.use, to be as late as possible in the use() line, but before any other error handlers..");
+		express.application.useOrig = express.application.use;
+		express.application.use = function() {
 			// Express recognizes error handlers by #params = 4
-			if (arguments.length == 2 && arguments[1].length == 4) {
-				express.Router.useOrig.apply(this, [logException]);
+			if (arguments[0].length == 4) {
+				express.application.useOrig.call(this, logException);
 			}
-
-			express.Router.useOrig.apply(this, arguments);
-
-			routerThis = this;
-		};
+		
+			express.application.useOrig.apply(this, arguments);
+		} 
 	} catch (e) {
 		log.error("Unable to instrument Express due to error: " + e);
 	}
@@ -80,9 +82,11 @@ exports.initPostLoad = function() {
 
 	log.debug("add final error handler..");
 	try {
-		express.Router.useOrig.apply(routerThis, [logException]);
+		if (applicationThis) {
+			express.application.useOrig.call(applicationThis, logException);
+		}
 	} catch (e) {
-		log.error("Unable to fully instrument Express due to error: " + e);
+		log.error("Unable to instrument Express error flow due to error: " + e);
 	}
 }
 
