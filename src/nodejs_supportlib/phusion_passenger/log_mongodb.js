@@ -23,6 +23,7 @@
  *  THE SOFTWARE.
  */
 
+var log;
 var codify = require('codify');
 var microtime = require('microtime');
 
@@ -47,13 +48,13 @@ function instrumentCollectionMethod(origParent, functionName, newFn) {
 	origParent["_passenger_wrapped_original_" + functionName] = originalFn;
 
 	origParent[functionName] = function() {
-		//console.log("INTERCEPTED COLLECTION FUNCTION CALLED:" + require('util').inspect(this, true, null));
+		//log.debug("INTERCEPTED COLLECTION FUNCTION CALLED:" + require('util').inspect(this, true, null));
 
-		//console.log("NAME: " + clStore.get("attachToTxnId"));
+		//log.debug("NAME: " + clStore.get("attachToTxnId"));
 
-		//console.log("THIS: " + require('util').inspect(this));
-		//console.log("ARGS: " + require('util').inspect(arguments));
-		//console.log("CLSTORE: " + clStore.get("attachToTxnId"));
+		//log.debug("THIS: " + require('util').inspect(this));
+		//log.debug("ARGS: " + require('util').inspect(arguments));
+		//log.debug("CLSTORE: " + clStore.get("attachToTxnId"));
 
 		var databaseName;
 		var collectionName;
@@ -91,7 +92,7 @@ function collectionFn(origArguments, databaseName, collectionName, functionName,
 	var tEnd = microtime.now();
 
 	var attachToTxnId = clStore.get("attachToTxnId");
-	console.log("==== Instrumentation [MongoDB] ==== [" + query + "] (attach to txnId " + attachToTxnId + ")");
+	log.verbose("==== Instrumentation [MongoDB] ==== [" + query + "] (attach to txnId " + attachToTxnId + ")");
 
 	var logBuf = [];
 	var uniqueTag = codify.toCode(tBegin);
@@ -103,26 +104,23 @@ function collectionFn(origArguments, databaseName, collectionName, functionName,
 	return rval;
 }
 
-exports.initPreLoad = function(appRoot, ustLogger) {
+exports.initPreLoad = function(logger, appRoot, ustLogger) {
+	log = logger;
 	ustLog = ustLogger;
 
 	try {
 		mongodb = require(appRoot + "/node_modules/mongodb");
-	} catch (e) {
-		console.log("MongoDB instrumentation error: " + e);
-	}
-
-	try {
-		if (!mongodb) {
-			// !!!
+	} catch (e1) {
+		try {
 			mongodb = require(appRoot + "/node_modules/mongoskin/node_modules/mongodb");
+		} catch (e2) {
+			log.debug("Not instrumenting MongoDB (probably not used): (default) " + e1 + ", (mongoskin) " + e2);
+			return;
 		}
-	} catch (e) {
-		console.log("MongoDB instrumentation error: " + e);
 	}
-
+	
 	try {
-		console.log("==== Instrumentation [MongoDB] ====");
+		log.info("==== Instrumentation [MongoDB] ==== initialize");
 
 		//mongodb.Db.prototype.collectionOrig = mongodb.Db.prototype.collection;
 		//mongodb.Db.prototype.collection = function() {
@@ -170,7 +168,7 @@ exports.initPreLoad = function(appRoot, ustLogger) {
 			instrumentCollectionMethod(mongodb.Collection.prototype, collectionMethods[i], collectionFn);
 		}
 	} catch (e) {
-		console.log("MongoDB instrumentation error: " + e);
+		log.error("Unable to instrument MongoDB due to error: " + e);
 	}
 }
 

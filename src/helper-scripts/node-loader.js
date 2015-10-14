@@ -62,7 +62,6 @@ function readOptions() {
 
 	function readNextOption() {
 		stdinReader.readLine(function(line) {
-//console.log(line);
 			if (line == "\n") {
 				setupEnvironment(options);
 			} else if (line == "") {
@@ -79,20 +78,52 @@ function readOptions() {
 	readNextOption();
 }
 
+function passengerToWinstonLogLevel(passengerLogLevel) {
+	switch (passengerLogLevel) {
+		case "1":
+			return "error";
+		case "2":
+			return "warn";
+		case "3": // notice
+		case "4": // info
+			return "info";
+		case "5": // debug
+			return "verbose";
+		case "6": // debug2
+			return "debug";
+		case "7": // debug3
+			return "silly";
+		case "0": // crit
+		default:
+			break;
+	}
+	
+	return "none";
+}
+
 function setupEnvironment(options) {
 	PhusionPassenger.options = options;
 	PhusionPassenger.configure = configure;
 	PhusionPassenger._appInstalled = false;
+	
+	var logLevel = passengerToWinstonLogLevel(PhusionPassenger.options.log_level);
+	var winston = require("winston");
+	var logger = new (winston.Logger)({
+  		transports: [ 
+  			new (winston.transports.Console)({ level: logLevel })
+  		]
+	});
+	
 	process.title = 'Passenger NodeApp: ' + options.app_root;
 	http.Server.prototype.originalListen = http.Server.prototype.listen;
 	http.Server.prototype.listen = installServer;
 	
-	ustLog.init(PhusionPassenger.options.ust_router_address, PhusionPassenger.options.ust_router_username, 
+	ustLog.init(logger, PhusionPassenger.options.ust_router_address, PhusionPassenger.options.ust_router_username, 
 		PhusionPassenger.options.ust_router_password, PhusionPassenger.options.union_station_key, PhusionPassenger.options.app_group_name);
-	//global.ustLog = ustLog;
+
 	if (ustLog.isEnabled()) {
-		logExpress.initPreLoad(options.app_root, ustLog);
-		logMongoDB.initPreLoad(options.app_root, ustLog);
+		logExpress.initPreLoad(logger, options.app_root, ustLog);
+		logMongoDB.initPreLoad(logger, options.app_root, ustLog);
 	}
 
 	stdinReader.close();

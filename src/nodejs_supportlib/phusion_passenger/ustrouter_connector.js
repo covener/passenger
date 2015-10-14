@@ -23,6 +23,7 @@
  *  THE SOFTWARE.
  */
 
+var log;
 var net = require('net');
 var os = require("os");
 var nbo = require('network-byte-order');
@@ -46,13 +47,14 @@ var inspection = false;
 // some kind of discard timer? failure to connect?
 
 function changeState(newRouterState) {
-	if (inspection) console.log("routerState: " + routerState + " -> " + newRouterState);
+	log.debug("routerState: " + routerState + " -> " + newRouterState);
 	routerState = newRouterState;
 }
 
-exports.init = function(routerAddress, routerUser, routerPass, gatewayKey, groupName) {
+exports.init = function(logger, routerAddress, routerUser, routerPass, gatewayKey, groupName) {
+	log = logger;
 	if (routerState != 0) {
-		console.error("ERROR: trying to init when routerState not 0! (ignoring)");
+		log.error("Trying to init when routerState not 0! (ignoring)");
 		return;
 	}
 	ustRouterAddress = routerAddress;
@@ -65,11 +67,11 @@ exports.init = function(routerAddress, routerUser, routerPass, gatewayKey, group
 	if (ustRouterAddress.indexOf("unix:") == 0) {
 		ustRouterAddress = ustRouterAddress.substring(5);
 	}
-	console.log("initialize ustrouter_connector with [" + ustRouterAddress + "] [" + ustRouterUser + "] [" + ustRouterPass + "] [" + 
-		ustGatewayKey + "] [" + appGroupName + "]");
+	log.debug("initialize ustrouter_connector with [routerAddress:" + ustRouterAddress + "] [user:" + ustRouterUser + "] [pass:" + ustRouterPass + "] [key:" + 
+		ustGatewayKey + "] [app:" + appGroupName + "]");
 
 	if (!ustRouterAddress || !ustRouterUser || !ustRouterPass || !ustGatewayKey || !appGroupName) {
-		console.log("Union Station logging disabled (incomplete configuration).");
+		log.verbose("Union Station logging disabled (incomplete configuration).");
 		return;
 	}
 	
@@ -101,7 +103,7 @@ function LogTransaction(cat) {
 }
 
 function tryWriteLogs() {
-	if (inspection) console.log("tryWriteLogs");
+	log.debug("tryWriteLogs");
 	if (routerState == 0) {
 		// it disconnected or crashed somehow, reconnect
 		beginConnection();
@@ -118,12 +120,12 @@ function tryWriteLogs() {
 	if (pendingTxnBuf[0].state == 1) {
 		// still need to open the txn
 		changeState(6); // expect ok/txnid in onData()..
-		if (inspection) console.log("open transaction(" + pendingTxnBuf[0].txnId + ")");
+		log.debug("open transaction(" + pendingTxnBuf[0].txnId + ")");
 		writeLenArray(routerConn, "openTransaction\0" + pendingTxnBuf[0].txnId + "\0" + appGroupName + "\0" + nodeName + "\0" + 
 			pendingTxnBuf[0].category +	"\0" + codify.toCode(pendingTxnBuf[0].timestamp) + "\0" + ustGatewayKey + "\0true\0true\0\0");
 	} else {
 		// txn is open, log the data & close
-		if (inspection) console.log("log & close transaction(" + pendingTxnBuf[0].txnId + ")");
+		log.debug("log & close transaction(" + pendingTxnBuf[0].txnId + ")");
 		txn = pendingTxnBuf.shift();
 		for (i = 0; i < txn.logBuf.length; i++) {
 			writeLenArray(routerConn, "log\0" + txn.txnId + "\0" + codify.toCode(txn.timestamp) + "\0");
@@ -155,23 +157,23 @@ var readBuf = "";
 // N.B. newData may be partial!
 function readLenArray(newData) {
 	readBuf += newData;
-if (inspection) console.log("read: total len = " + readBuf.length);
-if (inspection) console.log(new Buffer(readBuf));
+	log.silly("read: total len = " + readBuf.length);
+	log.silly(new Buffer(readBuf));
 	if (readBuf.length < 2) {
-if (inspection) console.log("need more header data..");
+	log.silly("need more header data..");
 		return null; // expecting at least length bytes
 	}
 	lenRcv = nbo.ntohs(new Buffer(readBuf), 0);
-if (inspection) console.log("read: lenRCv = " + lenRcv);
+	log.silly("read: lenRCv = " + lenRcv);
 	if (readBuf.length < 2 + lenRcv) {
-if (inspection) console.log("need more payload data..");
+	log.silly("need more payload data..");
 		return null; // not fully read yet
 	}
 	resultStr = readBuf.substring(2, lenRcv + 2);
 	readBuf = readBuf.substring(lenRcv + 2); // keep any bytes read beyond length for next read
 	
 	return resultStr.split("\0");
-//	setTimeout(function () { console.log('timeout..'); c.end() }, 100);
+//	setTimeout(function () { log.silly('timeout..'); c.end() }, 100);
 }
 
 function writeLenString(c, str) {
@@ -190,24 +192,24 @@ function writeLenArray(c, str) {
 
 function onError(e) {
 	if (routerState == 1) {
-		console.error("Unable to connect to ustrouter at [" + ustRouterAddress +"], Union Station logging disabled.");
+		log.error("Unable to connect to ustrouter at [" + ustRouterAddress +"], Union Station logging disabled.");
 	} else {
-		console.error("Unexpected error in ustrouter connection: " + e + ", Union Station logging disabled.");
+		log.error("Unexpected error in ustrouter connection: " + e + ", Union Station logging disabled.");
 	}
 	changeState(0);
 }
 
 function onData(data) {
-	if (inspection) console.log(data);
+	log.silly(data);
 	rcvString = readLenArray(data);
 	if (!rcvString) {
 		return;
 	}
-	if (inspection) console.log("got: [" + rcvString + "]");
+	log.silly("got: [" + rcvString + "]");
 
 	if (routerState == 2) { // expect version 1
 		if ("version" !== rcvString[0] || "1" !== rcvString[1]) {
-			console.error("Unsupported ustrouter version: [" + rcvString + "], Union Station logging disabled.");
+			log.error("Unsupported ustrouter version: [" + rcvString + "], Union Station logging disabled.");
 			changeState(0);
 			// TODO: close?
 			return;
@@ -218,7 +220,7 @@ function onData(data) {
 		writeLenString(routerConn, ustRouterPass);
 	} else if (routerState == 3) { // expect OK from auth
 		if ("status" != rcvString[0] || "ok" != rcvString[1]) {
-			console.error("Error authenticating to ustrouter: unexpected [" + rcvString + "], Union Station logging disabled.");
+			log.error("Error authenticating to ustrouter: unexpected [" + rcvString + "], Union Station logging disabled.");
 			changeState(0);
 			// TODO: close?
 			return;
@@ -228,7 +230,7 @@ function onData(data) {
 		writeLenArray(routerConn, "init\0" + nodeName + "\0");
 	} else if (routerState == 4) { // expect OK from init
 		if ("status" != rcvString[0] || "ok" != rcvString[1]) {
-			console.error("Error initializing ustrouter connection: unexpected [" + rcvString + "], Union Station logging disabled.");
+			log.error("Error initializing ustrouter connection: unexpected [" + rcvString + "], Union Station logging disabled.");
 			changeState(0);
 			// TODO: close?
 			return;
@@ -237,11 +239,11 @@ function onData(data) {
 		changeState(5);
 		tryWriteLogs();
 	 } else if (routerState == 5) { // not expecting anything
-	 	console.log("unexpected data receive state (5)");
+	 	log.warn("unexpected data receive state (5)");
 	 	tryWriteLogs();
 	} else if (routerState == 6) { // expect OK transaction open
 		if ("status" != rcvString[0] || "ok" != rcvString[1]) {
-			console.error("Error opening ustrouter transaction: unexpected [" + rcvString + "], Union Station logging disabled.");
+			log.error("Error opening ustrouter transaction: unexpected [" + rcvString + "], Union Station logging disabled.");
 			changeState(0);
 			// TODO: close?
 			return;
@@ -249,7 +251,7 @@ function onData(data) {
 		
 		pendingTxnBuf[0].state = 2;
 		if (pendingTxnBuf[0].txnId.length == 0) {
-			if (inspection) console.log("use rcvd back txnId: " + rcvString[2]);
+			log.debug("use rcvd back txnId: " + rcvString[2]);
 			pendingTxnBuf[0].txnId = rcvString[2]; // fill in the txn from the ustrouter reply
 		}
 
@@ -257,7 +259,7 @@ function onData(data) {
 		tryWriteLogs();
 	} else if (routerState == 7) { // expect OK transaction close
 		if ("status" != rcvString[0] || "ok" != rcvString[1]) {
-			console.error("Error closing ustrouter transaction: unexpected [" + rcvString + "], Union Station logging disabled.");
+			log.error("Error closing ustrouter transaction: unexpected [" + rcvString + "], Union Station logging disabled.");
 			changeState(0);
 			// TODO: close?
 			return;
